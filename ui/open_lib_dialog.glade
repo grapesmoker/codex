@@ -1,8 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Generated with glade 3.18.3 -->
 <interface>
-  <requires lib="gtk+" version="3.18"/>
-  <object class="GtkDialog" id="input_dialog">
+  <requires lib="gtk+" version="3.12"/>
+  <object class="GtkListStore" id="library_store">
+    <columns>
+      <!-- column-name library_name -->
+      <column type="gchar"/>
+      <!-- column-name document_count -->
+      <column type="guint"/>
+    </columns>
+  </object>
+  <object class="GtkDialog" id="open_lib_dialog">
     <property name="can_focus">False</property>
     <property name="type_hint">dialog</property>
     <child internal-child="vbox">
@@ -16,10 +24,11 @@
             <property name="layout_style">end</property>
             <child>
               <object class="GtkButton" id="dialog_ok">
-                <property name="label" translatable="yes">Ok</property>
+                <property name="label">gtk-ok</property>
                 <property name="visible">True</property>
                 <property name="can_focus">True</property>
                 <property name="receives_default">True</property>
+                <property name="use_stock">True</property>
               </object>
               <packing>
                 <property name="expand">True</property>
@@ -29,12 +38,11 @@
             </child>
             <child>
               <object class="GtkButton" id="dialog_cancel">
-                <property name="label" translatable="yes">Cancel</property>
+                <property name="label">gtk-cancel</property>
                 <property name="visible">True</property>
                 <property name="can_focus">True</property>
                 <property name="receives_default">True</property>
-                <property name="relief">none</property>
-                <property name="xalign">0.57999998331069946</property>
+                <property name="use_stock">True</property>
               </object>
               <packing>
                 <property name="expand">True</property>
@@ -50,31 +58,13 @@
           </packing>
         </child>
         <child>
-          <object class="GtkBox" id="box1">
+          <object class="GtkTreeView" id="library_list">
             <property name="visible">True</property>
-            <property name="can_focus">False</property>
-            <property name="orientation">vertical</property>
-            <child>
-              <object class="GtkLabel" id="dialog_message">
-                <property name="visible">True</property>
-                <property name="can_focus">False</property>
-              </object>
-              <packing>
-                <property name="expand">False</property>
-                <property name="fill">True</property>
-                <property name="position">0</property>
-              </packing>
-            </child>
-            <child>
-              <object class="GtkEntry" id="dialog_entry">
-                <property name="visible">True</property>
-                <property name="can_focus">True</property>
-              </object>
-              <packing>
-                <property name="expand">False</property>
-                <property name="fill">True</property>
-                <property name="position">1</property>
-              </packing>
+            <property name="can_focus">True</property>
+            <property name="model">library_store</property>
+            <property name="tooltip_column">3</property>
+            <child internal-child="selection">
+              <object class="GtkTreeSelection" id="library_list_selection"/>
             </child>
           </object>
           <packing>
