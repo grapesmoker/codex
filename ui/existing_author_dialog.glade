@@ -2,17 +2,15 @@
 <!-- Generated with glade 3.18.3 -->
 <interface>
   <requires lib="gtk+" version="3.12"/>
-  <object class="GtkListStore" id="library_store">
+  <object class="GtkListStore" id="authors_store">
     <columns>
       <!-- column-name ID -->
       <column type="guint"/>
-      <!-- column-name Library name -->
+      <!-- column-name Author -->
       <column type="gchararray"/>
-      <!-- column-name Document count -->
-      <column type="guint"/>
     </columns>
   </object>
-  <object class="GtkDialog" id="open_lib_dialog">
+  <object class="GtkDialog" id="existing_author_dialog">
     <property name="can_focus">False</property>
     <property name="type_hint">dialog</property>
     <child internal-child="vbox">
@@ -25,13 +23,14 @@
             <property name="can_focus">False</property>
             <property name="layout_style">end</property>
             <child>
-              <object class="GtkButton" id="dialog_ok">
+              <object class="GtkButton" id="ok">
                 <property name="label">gtk-ok</property>
                 <property name="visible">True</property>
                 <property name="can_focus">True</property>
                 <property name="receives_default">True</property>
                 <property name="use_stock">True</property>
-                <signal name="clicked" handler="on_dialog_ok_clicked" object="open_lib_dialog" swapped="no"/>
+                <property name="always_show_image">True</property>
+                <signal name="clicked" handler="on_ok_clicked" swapped="no"/>
               </object>
               <packing>
                 <property name="expand">True</property>
@@ -40,13 +39,14 @@
               </packing>
             </child>
             <child>
-              <object class="GtkButton" id="dialog_cancel">
+              <object class="GtkButton" id="cancel">
                 <property name="label">gtk-cancel</property>
                 <property name="visible">True</property>
                 <property name="can_focus">True</property>
                 <property name="receives_default">True</property>
                 <property name="use_stock">True</property>
-                <signal name="clicked" handler="on_dialog_cancel_clicked" object="open_lib_dialog" swapped="no"/>
+                <property name="always_show_image">True</property>
+                <signal name="clicked" handler="on_cancel_clicked" swapped="no"/>
               </object>
               <packing>
                 <property name="expand">True</property>
@@ -62,14 +62,10 @@
           </packing>
         </child>
         <child>
-          <object class="GtkTreeView" id="library_list">
+          <object class="GtkComboBox" id="authors">
             <property name="visible">True</property>
-            <property name="can_focus">True</property>
-            <property name="hscroll_policy">natural</property>
-            <property name="model">library_store</property>
-            <child internal-child="selection">
-              <object class="GtkTreeSelection" id="library_list_selection"/>
-            </child>
+            <property name="can_focus">False</property>
+            <property name="model">authors_store</property>
           </object>
           <packing>
             <property name="expand">False</property>

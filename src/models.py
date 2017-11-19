@@ -78,3 +78,8 @@ class Category(Base):
     documents = relationship('Document', secondary=document_categories, back_populates='categories')
     library_id = Column(Integer, ForeignKey('libraries.id'))
     library = relationship('Library', back_populates='categories')
+    parent_id = Column(Integer, ForeignKey('categories.id'))
+    subcategories = relationship('Category')
+
+    def __str__(self):
+        return self.name

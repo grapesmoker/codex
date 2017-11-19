@@ -2,7 +2,13 @@
 
 import gi
 gi.require_version('Gtk', '3.0')
+gi.require_version('EvinceDocument', '3.0')
+gi.require_version('EvinceView', '3.0')
+
 from gi.repository import Gtk
+from gi.repository import EvinceDocument
+
+EvinceDocument.init()
 
 from app import LibraryApp
 
