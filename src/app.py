@@ -14,8 +14,8 @@ from gi.repository import GLib, Gio, Gtk
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from dialog import InputDialog, OpenLibraryDialog
-from views import DocumentView, AuthorView
+from dialog import InputDialog, OpenLibraryDialog, EditAuthorDialog
+from views import DocumentView, AuthorView, CategoryView
 
 from pdfminer.pdfparser import PDFParser
 from pdfminer.pdfdocument import PDFDocument
@@ -39,6 +39,10 @@ class LibraryApp(Gtk.Application):
         self.current_library = None
         self.document_view = DocumentView(self.session)
         self.author_view = AuthorView(self.session)
+        self.category_view = CategoryView(self.session)
+
+        self.author_view.connect('update_author', self.update_author)
+        self.document_view.connect('update_document', self.update_document)
         EvinceDocument.init()
 
     def do_startup(self):
@@ -93,9 +97,23 @@ class LibraryApp(Gtk.Application):
 
             self.docs_tree.connect('row-activated', self.show_doc)
             self.authors_tree.connect('row-activated', self.show_author)
+            self.category_tree.connect('row-activated', self.show_category)
+
+            self.docs_tree.connect('button-press-event', self.documents_context_menu)
+            self.authors_tree.connect('button-press-event', self.authors_context_menu)
 
         self.window.show_all()
-        
+
+
+    # def on_button_press(self, widget, event):
+    #
+    #     if event.button == 3 and widget == self.docs_tree:
+    #         self.documents_context_menu(self.docs_tree.get_selection(), event)
+    #     elif event.button == 3 and widget == self.authors_tree:
+    #         self.authors_context_menu(self.authors_tree.get_selection(), event)
+    #     elif event.button == 3 and widget == self.category_tree:
+    #         self.category_context_menu(self.category_tree.get_selection(), event)
+
     def new_library(self, widget):
         
         #builder = Gtk.Builder.new_from_file('ui/input_box.glade')
@@ -130,7 +148,8 @@ class LibraryApp(Gtk.Application):
         dialog.destroy()
         self.load_documents()
         self.load_authors()
-        
+        self.load_categories()
+
     def import_folder(self, widget):
         
         print(widget)
@@ -154,44 +173,53 @@ class LibraryApp(Gtk.Application):
             for root, dirs, files in os.walk(library_root):
                 for f in files:
                     if f.endswith('.pdf'):
-                        full_path = os.path.join(root, f)
-                        print('Processing', full_path)
-                        try:
-                            parser = PDFParser(open(full_path, 'rb'))
-                            doc = PDFDocument(parser)
-                            meta = doc.info[0]
-                            author = str(meta.get('Author', ''))
-                            title = str(meta.get('Title'))
-                        except Exception as ex:
-                            author = None
-                            title = f.replace('.pdf', '')
-                        # keywords = str(meta.get('/Keywords')).split(',')
-    
-                        new_document = models.Document(title=title, path=full_path, library=self.current_library)
+                        self.add_file(root, f)
 
-                        if author is not None and author != '':
-                            author_names = author.split()
-                        else:
-                            author_names = ['', '']
-                        if len(author_names) == 2:
-                            new_author = models.Author(first_name=author_names[0], last_name=author_names[-1], library=self.current_library)
-                        elif len(author_names) == 3:
-                            new_author = models.Author(first_name=author_names[0], last_name=author_names[-1], middle_name=author_names[1],
-                                                       library=self.current_library)
-                        else:
-                            new_author = models.Author(first_name='', last_name='', library=self.current_library)
-                        self.session.add(new_document)
-                        self.session.add(new_author)
-                        self.session.commit()
-                        new_document.authors.append(new_author)
-                        new_author.documents.append(new_document)
-                        #self.session.add(self.current_library)
-                        #self.current_library.documents.append(new_document)
-                        #self.current_library.authors.append(new_author)
-                        self.session.commit()
             self.load_documents()
         else:
             dialog.destroy()
+
+    def add_file(self, root, filename):
+
+        full_path = os.path.join(root, filename)
+        print('Processing', full_path)
+        try:
+            parser = PDFParser(open(full_path, 'rb'))
+            doc = PDFDocument(parser)
+            meta = doc.info[0]
+            author = str(meta.get('Author', ''))
+            title = str(meta.get('Title'))
+        except Exception as ex:
+            author = None
+            title = f.replace('.pdf', '')
+        # keywords = str(meta.get('/Keywords')).split(',')
+
+        new_document = models.Document(title=title, path=full_path, library=self.current_library)
+
+        if author is not None and author != '':
+            author_names = author.split()
+        else:
+            author_names = ['', '']
+        if len(author_names) == 2:
+            new_author = models.Author(first_name=author_names[0], last_name=author_names[-1],
+                                       library=self.current_library)
+        elif len(author_names) == 3:
+            new_author = models.Author(first_name=author_names[0], last_name=author_names[-1],
+                                       middle_name=author_names[1],
+                                       library=self.current_library)
+        else:
+            new_author = models.Author(first_name='', last_name='', library=self.current_library)
+        self.session.add(new_document)
+        self.session.add(new_author)
+        self.session.commit()
+        new_document.authors.append(new_author)
+        new_author.documents.append(new_document)
+        # self.session.add(self.current_library)
+        # self.current_library.documents.append(new_document)
+        # self.current_library.authors.append(new_author)
+        self.session.commit()
+
+        return new_document, new_author
             
     def load_documents(self):
         
@@ -200,7 +228,7 @@ class LibraryApp(Gtk.Application):
         self.docs_store.clear()
         
         for doc in docs:
-            authors = ';'.join([str(auth) for auth in doc.authors])
+            authors = '; '.join([str(auth) for auth in doc.authors])
             self.docs_store.append([doc.id, doc.title, authors])
         self.window.show_all()
 
@@ -213,6 +241,20 @@ class LibraryApp(Gtk.Application):
         for author in authors:
             self.authors_store.append([author.id, str(author)])
         self.window.show_all()
+
+    def load_categories(self):
+
+        categories = self.session.query(models.Category).filter(models.Category.library_id == self.current_library.id).filter(
+            models.Category.subcategories.any())
+        self.category_store.clear()
+
+        def insert_category(parent, category):
+            parent_iter = self.category_store.insert(parent, -1, [category.id, category.name])
+            for child in category.subcategories:
+                insert_category(parent_iter, child)
+
+        for category in categories:
+            insert_category(None, category)
     
     def show_doc(self, *args):
         
@@ -237,7 +279,6 @@ class LibraryApp(Gtk.Application):
         selection = self.authors_tree.get_selection()
         model, treeiter = selection.get_selected()
         if treeiter:
-
             author_id = model[treeiter][0]
             author = self.session.query(models.Author).get(author_id)
             for child in self.right_frame.get_children():
@@ -246,6 +287,171 @@ class LibraryApp(Gtk.Application):
             self.right_frame.add(self.author_view.main_widget)
             self.author_view.set_author(author)
             self.right_frame.show_all()
+
+    def show_category(self, *args):
+
+        selection = self.category_tree.get_selection()
+        model, treeiter = selection.get_selected()
+        if treeiter:
+            cat_id = model[treeiter][0]
+            cat = self.session.query(models.Category).get(cat_id)
+            for child in self.right_frame.get_children():
+                self.right_frame.remove(child)
+
+            self.right_frame.add(self.category_view.main_widget)
+            self.category_view.set_category(cat)
+            self.right_frame.show_all()
+
+    def documents_context_menu(self, widget, event):
+
+        if event.button == 3:
+
+            menu = Gtk.Menu()
+            submenu = Gtk.MenuItem('Add new document')
+            submenu.connect('activate', self.add_new_document)
+            menu.append(submenu)
+            submenu = Gtk.MenuItem('Delete document')
+            submenu.connect('activate', self.delete_document, widget)
+            menu.append(submenu)
+
+            menu.attach_to_widget(self.docs_tree)
+            menu.popup(None, None, None, None, event.button, event.time)
+
+            menu.show_all()
+
+    def add_new_document(self, tree):
+
+        if not self.current_library:
+            dialog = Gtk.MessageDialog(self.window, 0, Gtk.MessageType.INFO,
+                                       Gtk.ButtonsType.OK, 'Need to have a current library before adding documents!')
+            dialog.run()
+            dialog.destroy()
+            return
+
+        dialog = Gtk.FileChooserDialog('Select document', self.window,
+                                       Gtk.FileChooserAction.OPEN,
+                                       (Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+                                        Gtk.STOCK_OPEN, Gtk.ResponseType.OK))
+        dialog.set_select_multiple(True)
+        result = dialog.run()
+        if result == Gtk.ResponseType.OK:
+            files = dialog.get_filenames()
+            for f in files:
+                root, filename = os.path.split(os.path.abspath(f))
+                document, author = self.add_file(root, filename)
+                self.docs_store.append([document.id, document.title,
+                                        '; '.join([str(author) for author in document.authors])])
+        dialog.destroy()
+
+    def delete_document(self, menu, tree):
+
+        selection = tree.get_selection()
+        model, treeiter = selection.get_selected()
+        if treeiter:
+            dialog = Gtk.MessageDialog(self.window, 0, Gtk.MessageType.QUESTION,
+                                       Gtk.ButtonsType.YES_NO, 'Are you sure you want to delete this document?')
+            dialog.format_secondary_text(
+                'The document will only be deleted from the database; it will be left unchanged on disk.')
+            response = dialog.run()
+            if response == Gtk.ResponseType.YES:
+                doc_id = model[treeiter][0]
+                doc = self.session.query(models.Document).get(doc_id)
+                self.session.delete(doc)
+                self.session.commit()
+                self.docs_store.remove(treeiter)
+                for child in self.right_frame.get_children():
+                    self.right_frame.remove(child)
+            dialog.destroy()
+
+    def update_document(self, event, document_id):
+
+        #print('updating document with id', document_id)
+        for row in self.docs_store:
+            if row[0] == document_id:
+                document = self.session.query(models.Document).get(document_id)
+                self.docs_store.set_value(row.iter, 1, document.title)
+                self.docs_store.set_value(row.iter, 2, '; '.join([str(author) for author in document.authors]))
+
+    def authors_context_menu(self, selection, event):
+
+        if event.button == 3:
+
+            menu = Gtk.Menu()
+            submenu = Gtk.MenuItem('Add new author')
+            submenu.connect('activate', self.add_new_author)
+            menu.append(submenu)
+            submenu = Gtk.MenuItem('Delete author')
+            submenu.connect('activate', self.delete_author, selection)
+            menu.append(submenu)
+
+            menu.attach_to_widget(self.authors_tree)
+            menu.popup(None, None, None, None, event.button, event.time)
+
+            menu.show_all()
+
+    def add_new_author(self, menu):
+
+        if not self.current_library:
+            dialog = Gtk.MessageDialog(self.window, 0, Gtk.MessageType.INFO,
+                                       Gtk.ButtonsType.OK, 'Need to have a current library before adding authors!')
+            dialog.run()
+            dialog.destroy()
+            return
+
+        dialog = EditAuthorDialog()
+        result = dialog.run()
+        if result == Gtk.ResponseType.OK:
+            author = dialog.author
+            author.library = self.current_library
+            self.session.add(author)
+            self.session.commit()
+            self.authors_store.append([author.id, str(author)])
+        dialog.destroy()
+
+    def delete_author(self, menu, tree):
+
+        selection = tree.get_selection()
+        model, treeiter = selection.get_selected()
+        if treeiter:
+            dialog = Gtk.MessageDialog(self.window, 0, Gtk.MessageType.QUESTION,
+                                       Gtk.ButtonsType.YES_NO, 'Are you sure you want to delete this author?')
+            dialog.format_secondary_text(
+                'The author will be deleted from the database but any documents associated with them will not be changed.')
+            response = dialog.run()
+            if response == Gtk.ResponseType.YES:
+                author_id = model[treeiter][0]
+                author = self.session.query(models.Author).get(author_id)
+                self.session.delete(author)
+                self.session.commit()
+                self.authors_store.remove(treeiter)
+                for child in self.right_frame.get_children():
+                    self.right_frame.remove(child)
+            dialog.destroy()
+
+    def update_author(self, event, author_id):
+
+        for row in self.authors_store:
+            if row[0] == author_id:
+                author = self.session.query(models.Author).get(author_id)
+                self.authors_store.set_value(row.iter, 1, str(author))
+
+    def category_context_menu(self, selection, event):
+
+        menu = Gtk.Menu()
+        submenu = Gtk.MenuItem('Add new top level category')
+        submenu.connect('activate', self.add_new_top_category)
+        menu.append(submenu)
+        submenu = Gtk.MenuItem('Add new subcategory')
+        submenu.connect('activate', self.add_new_subcategory, selection)
+        menu.append(submenu)
+        submenu = Gtk.MenuItem('Delete category')
+        submenu.connect('activate', self.delete_category, selection)
+        menu.append(submenu)
+
+        menu.attach_to_widget(self.category_tree)
+        menu.popup(None, None, None, None, event.button, event.time)
+
+        menu.show_all()
 
     def on_quit(self):
         

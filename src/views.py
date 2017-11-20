@@ -5,7 +5,7 @@ gi.require_version('Gtk', '3.0')
 gi.require_version('EvinceDocument', '3.0')
 gi.require_version('EvinceView', '3.0')
 
-from gi.repository import GLib, Gio, Gtk, GdkPixbuf
+from gi.repository import GLib, Gio, Gtk, GObject
 from gi.repository import EvinceDocument, EvinceView
 
 import os
@@ -15,12 +15,18 @@ from wand.image import Image
 import models as models
 from dialog import EditAuthorDialog, ExistingAuthorDialog, InputDialog
 
-class DocumentView(object):
+class DocumentView(GObject.GObject):
         
     template = 'ui/doc_view.glade'
-    
+
+    __gsignals__ = {
+        'update_document': (GObject.SIGNAL_RUN_FIRST, None, (int, ))
+    }
+
     def __init__(self, session, document=None):
-        
+
+        GObject.GObject.__init__(self)
+
         self.document = document
         self.session = session
         self.builder = Gtk.Builder.new_from_file(self.template)
@@ -174,6 +180,7 @@ class DocumentView(object):
         self.session.add(self.document)
         self.document.title = self.title.get_text()
         self.session.commit()
+        self.emit('update_document', self.document.id)
 
     def generate_preview(self, page):
 
@@ -248,11 +255,17 @@ class DocumentView(object):
         self.main_widget.destroy()
 
 
-class AuthorView(object):
+class AuthorView(GObject.GObject):
 
     template = 'ui/author_view.glade'
 
+    __gsignals__ = {
+        'update_author': (GObject.SIGNAL_RUN_FIRST, None, (int, ))
+    }
+
     def __init__(self, session, author=None):
+
+        GObject.GObject.__init__(self)
 
         self.author = author
         self.session = session
@@ -290,10 +303,81 @@ class AuthorView(object):
 
         for doc in documents:
             location, filename = os.path.split(doc.path)
-            print doc.id, doc.title, location, filename
             self.docs_store.append([doc.id, doc.title, location, filename])
 
     def set_author(self, author):
 
         self.author = author
         self.load_data()
+
+    def on_save_clicked(self, *args):
+
+        self.session.add(self.author)
+        self.author.first_name = self.first_name.get_text()
+        self.author.middle_name = self.middle_name.get_text()
+        self.author.last_name = self.last_name.get_text()
+        self.emit('update_author', self.author.id)
+        self.session.commit()
+
+
+class CategoryView(object):
+
+    template = 'ui/category_view.glade'
+
+    def __init__(self, session, category=None):
+
+        self.category = category
+        self.session = session
+        self.builder = Gtk.Builder.new_from_file(self.template)
+        self.builder.connect_signals(self)
+        self.main_widget = self.builder.get_object('grid')
+        self.subcat_tree = self.builder.get_object('subcategories')
+        self.subcat_store = self.builder.get_object('subcategories_store')
+        self.parent = self.builder.get_object('parent')
+        self.parent_store = self.builder.get_object('parent_store')
+
+        renderer = Gtk.CellRendererText()
+        column = Gtk.TreeViewColumn('Id', renderer, text=0)
+        self.subcat_tree.append_column(column)
+        column.set_visible(False)
+        column = Gtk.TreeViewColumn('Subcategory', renderer, text=1)
+        self.subcat_tree.append_column(column)
+
+        renderer_text2 = Gtk.CellRendererText()
+        self.parent.pack_start(renderer_text2, True)
+        self.parent.add_attribute(renderer_text2, "text", 1)
+
+        if self.category:
+            self.load_data()
+
+    def load_data(self):
+
+        self.name = self.builder.get_object('name')
+        self.name.set_text(self.category.name or '')
+
+        subcategories = self.category.subcategories
+        self.subcat_store.clear()
+        self.parent_store.clear()
+
+        for cat in subcategories:
+            self.subcat_store.append([cat.id, cat.name])
+
+        parents = self.session.query(models.Category).filter(models.Category.library == self.category.library)
+
+        for parent in parents:
+            if not self.category.find_item(parent):
+                parent_iter = self.parent_store.append([parent.id, parent.name])
+                if parent.id == self.category.parent_id:
+                    self.parent.set_active_iter(parent_iter)
+
+    def set_category(self, category):
+
+        self.category = category
+        self.load_data()
+
+    def on_save_clicked(self, *args):
+
+        self.session.add(self.category)
+        self.category.name = self.name.get_text()
+
+        self.session.commit()

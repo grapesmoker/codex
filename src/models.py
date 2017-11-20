@@ -25,13 +25,13 @@ library_categories = Table('library_categories', Base.metadata,
                         Column('library_id', ForeignKey('libraries.id'), primary_key=True),
                         Column('category_id', ForeignKey('categories.id'), primary_key=True))
 
+
 class Library(Base):
     
     __tablename__ = 'libraries'
     id = Column(Integer, Sequence('user_id_seq'), primary_key=True)
     name = Column(String(500))
     
-    #documents = relationship('Document', secondary=library_documents, back_populates='library')
     documents = relationship('Document', back_populates='library')
     authors = relationship('Author', back_populates='library')
     categories = relationship('Category', back_populates='library')
@@ -66,7 +66,7 @@ class Author(Base):
 
     def __str__(self):
         # return '<Author id={}, first_name={}, last_name={}>'.format(self.id, self.first_name, self.last_name)
-        return '{}, {} {}'.format(self.first_name or '', self.last_name or '', self.middle_name or '')
+        return '{}, {} {}'.format(self.last_name or '', self.first_name or '', self.middle_name or '')
 
 class Category(Base):
 
@@ -83,3 +83,16 @@ class Category(Base):
 
     def __str__(self):
         return self.name
+
+    def find_item(self, category):
+
+        def recursive_find(cat, target):
+            for item in cat.subcategories:
+                if target == item:
+                    return item
+                else:
+                    return recursive_find(item, target)
+            return None
+        if category == self:
+            return self
+        recursive_find(self, category)
