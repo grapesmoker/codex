@@ -182,3 +182,62 @@ class ExistingAuthorDialog(object):
     def destroy(self):
 
         self.dialog.destroy()
+
+
+class ExistingCategoryDialog(object):
+
+    template = 'ui/existing_category_dialog.glade'
+
+    def __init__(self, categories=None):
+        self.builder = Gtk.Builder.new_from_file(self.template)
+        self.builder.connect_signals(self)
+        self.dialog = self.builder.get_object('existing_category_dialog')
+        self.categories = categories
+        self.category_tree = self.builder.get_object('categories')
+        self.category_store = self.builder.get_object('category_store')
+        self.selected_category = None
+        self.load_data()
+
+    def load_data(self):
+
+        self.category_store.clear()
+
+        def insert_category(parent, category):
+            parent_iter = self.category_store.insert(parent, -1, [category.id, category.name])
+            for child in category.subcategories:
+                insert_category(parent_iter, child)
+
+        for category in self.categories:
+            if category.parent_id is None:
+                insert_category(None, category)
+
+        renderer = Gtk.CellRendererText()
+        column = Gtk.TreeViewColumn('Id', renderer, text=0)
+        self.category_tree.append_column(column)
+        column.set_visible(False)
+        column = Gtk.TreeViewColumn('Category', renderer, text=1)
+        self.category_tree.append_column(column)
+
+    def run(self):
+
+        result = self.dialog.run()
+        return result
+
+    def on_ok_clicked(self, *args):
+
+        selection = self.category_tree.get_selection()
+        model, treeiter = selection.get_selected()
+        if treeiter:
+            category_id = model[treeiter][0]
+            print([cat.id for cat in self.categories])
+            print(category_id)
+            self.selected_category = [cat for cat in self.categories if cat.id == category_id][0]
+        self.dialog.response(Gtk.ResponseType.OK)
+
+    def on_cancel_clicked(self, *args):
+
+        self.dialog.response(Gtk.ResponseType.CANCEL)
+
+    def destroy(self):
+
+        self.dialog.destroy()

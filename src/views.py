@@ -5,7 +5,7 @@ gi.require_version('Gtk', '3.0')
 gi.require_version('EvinceDocument', '3.0')
 gi.require_version('EvinceView', '3.0')
 
-from gi.repository import GLib, Gio, Gtk, GObject
+from gi.repository import GLib, Gio, Gtk, GObject, Gdk
 from gi.repository import EvinceDocument, EvinceView
 
 import os
@@ -13,14 +13,16 @@ import wand
 from wand.image import Image
 
 import models as models
-from dialog import EditAuthorDialog, ExistingAuthorDialog, InputDialog
+from dialog import EditAuthorDialog, ExistingAuthorDialog, InputDialog, ExistingCategoryDialog
 
 class DocumentView(GObject.GObject):
         
     template = 'ui/doc_view.glade'
 
     __gsignals__ = {
-        'update_document': (GObject.SIGNAL_RUN_FIRST, None, (int, ))
+        'update_document': (GObject.SIGNAL_RUN_FIRST, None, (int, bool)),
+        'update_author': (GObject.SIGNAL_RUN_FIRST, None, (int, bool)),
+        'update_category': (GObject.SIGNAL_RUN_FIRST, None, (int, int, bool))
     }
 
     def __init__(self, session, document=None):
@@ -47,7 +49,11 @@ class DocumentView(GObject.GObject):
         self.rename_pattern.set_text('{title} - {authors}.pdf')
         self.authors_tree.connect('button_press_event', self.on_button_press)
         self.category_tree.connect('button_press_event', self.on_button_press)
-        
+        self.pdf_view.connect('selection-changed', self.pdf_select)
+
+        rename_button = self.builder.get_object('rename')
+        rename_button.connect('clicked', self.rename)
+
         renderer = Gtk.CellRendererText()
         column = Gtk.TreeViewColumn('Id', renderer, text=0)
         self.authors_tree.append_column(column)
@@ -81,10 +87,12 @@ class DocumentView(GObject.GObject):
         def insert_category(parent, category):
             parent_iter = self.category_store.insert(parent, -1, [category.id, category.name])
             for child in category.subcategories:
-                insert_category(parent_iter, child)
+                if child in self.document.categories:
+                    insert_category(parent_iter, child)
 
         for category in self.document.categories:
-            insert_category(None, category)
+            if category.parent_id is None:
+                insert_category(None, category)
 
     def set_document(self, document):
         
@@ -104,6 +112,8 @@ class DocumentView(GObject.GObject):
             author.documents.append(self.document)
             self.session.add(self.document)
             self.authors_store.append([author.id, str(author)])
+            self.session.commit()
+            self.emit('update_author', author.id, True)
 
         dialog.destroy()
 
@@ -137,12 +147,40 @@ class DocumentView(GObject.GObject):
             self.session.commit()
             self.authors_store.remove(treeiter)
 
+    def add_existing_category(self, *args):
+
+        if self.document:
+            categories = self.session.query(models.Category).filter(models.Category.library_id == self.document.library_id)
+        else:
+            categories = []
+        dialog = ExistingCategoryDialog(categories)
+        result = dialog.run()
+        if result == Gtk.ResponseType.OK:
+            category = dialog.selected_category
+            ancestors = [category]
+
+            def get_ancestor_chain(category):
+                if category.parent_id is not None:
+                    parent = self.session.query(models.Category).get(category.parent_id)
+                    ancestors.append(parent)
+                    get_ancestor_chain(parent)
+
+            get_ancestor_chain(category)
+            print([cat.name for cat in ancestors[::-1]])
+            parent_iter = None
+            for ancestor in ancestors[::-1]:
+                self.session.add(self.document)
+                self.document.categories.append(ancestor)
+                parent_iter = self.category_store.insert(parent_iter, -1, [ancestor.id, ancestor.name])
+                self.session.commit()
+        dialog.destroy()
+
     def add_new_top_category(self, *args):
 
         dialog = InputDialog(None, 'Enter category name')
         result = dialog.run()
         if result == Gtk.ResponseType.OK:
-            category_name = dialog.entry.get_text().decode('utf8')
+            category_name = dialog.entry.get_text()
             new_category = models.Category(name=category_name, library=self.document.library)
             self.session.add(new_category)
             self.session.commit()
@@ -150,6 +188,7 @@ class DocumentView(GObject.GObject):
             self.document.categories.append(new_category)
             self.session.commit()
             self.category_store.insert(None, -1, [new_category.id, new_category.name])
+            self.emit('update_category', new_category.id, -1, True)
 
         dialog.destroy()
 
@@ -159,7 +198,7 @@ class DocumentView(GObject.GObject):
         result = dialog.run()
         if result == Gtk.ResponseType.OK:
             model, treeiter = selection.get_selected()
-            subcat_name = dialog.entry.get_text().decode('utf-8')
+            subcat_name = dialog.entry.get_text()
             if treeiter:
                 parent_id = model[treeiter][0]
                 new_subcat = models.Category(name=subcat_name, parent_id=parent_id, library=self.document.library)
@@ -169,18 +208,44 @@ class DocumentView(GObject.GObject):
                 self.document.categories.append(new_subcat)
                 self.session.commit()
                 self.category_store.insert(treeiter, -1, [new_subcat.id, new_subcat.name])
+                self.emit('update_category', new_subcat.id, new_subcat.parent_id, True)
         dialog.destroy()
 
     def delete_category(self, widget, selection):
 
-        pass
+        model, treeiter = selection.get_selected()
+        if treeiter:
+            has_children = model.iter_has_child(treeiter)
+            category_id = model[treeiter][0]
+            category = self.session.query(models.Category).get(category_id)
+            self.session.add(self.document)
+
+            def recursive_remove(category):
+                if category in self.document.categories:
+                    self.document.categories.remove(category)
+                for subcat in category.subcategories:
+                    recursive_remove(subcat)
+
+            if has_children:
+                dialog = Gtk.MessageDialog(None, 0, Gtk.MessageType.QUESTION,
+                                           Gtk.ButtonsType.YES_NO,
+                                           'Removing a category with children will remove all of its children as well. Are you sure?')
+                result = dialog.run()
+                if result == Gtk.ResponseType.YES:
+                    recursive_remove(category)
+                    self.category_store.remove(treeiter)
+                dialog.destroy()
+
+            else:
+                self.document.categories.remove(category)
+                self.category_store.remove(treeiter)
 
     def on_save_clicked(self, *args):
         
         self.session.add(self.document)
         self.document.title = self.title.get_text()
         self.session.commit()
-        self.emit('update_document', self.document.id)
+        self.emit('update_document', self.document.id, False)
 
     def generate_preview(self, page):
 
@@ -235,6 +300,9 @@ class DocumentView(GObject.GObject):
         menu = Gtk.Menu()
         model, treeiter = selection.get_selected()
 
+        submenu = Gtk.MenuItem('Add existing category')
+        submenu.connect('activate', self.add_existing_category)
+        menu.append(submenu)
         submenu = Gtk.MenuItem('Add new top level category')
         submenu.connect('activate', self.add_new_top_category)
         menu.append(submenu)
@@ -249,7 +317,59 @@ class DocumentView(GObject.GObject):
         menu.popup(None, None, None, None, event.button, event.time)
 
         menu.show_all()
-        
+
+    def rename(self, widget):
+
+        pattern = self.rename_pattern.get_text()
+        format_dict = {}
+        authors = self.document.authors
+        categories = self.document.categories
+
+        if '{last_name}' in pattern and len(authors) > 0:
+            format_dict['last_name'] = authors[0].last_name
+        if '{first_name}' in pattern and len(authors) > 0:
+            format_dict['first_name'] = authors[0].first_name
+        if '{author}' in pattern:
+            if len(authors) > 0:
+                format_dict['author'] = str(authors[0]).strip()
+            else:
+                format_dict['author'] = ''
+        if '{authors_last_names}' in pattern:
+            format_dict['authors_last_names'] = ', '.join([auth.last_name for auth in authors])
+        if '{authors}' in pattern:
+            format_dict['authors'] = '; '.join([str(auth).strip() for auth in authors])
+        if '{title}' in pattern:
+            format_dict['title'] = self.document.title
+        if '{categories}' in pattern:
+            format_dict['categories'] = ', '.join([str(cat).strip() for cat in categories])
+
+        path = self.document.path
+        new_file_name = pattern.format(**format_dict)
+        location = os.path.split(path)[0]
+        new_location = os.path.join(location, new_file_name)
+        if not new_location.endswith('.pdf') or new_location.endswith('.PDF'):
+            new_location += '.pdf'
+
+        dialog = Gtk.MessageDialog(None, 0, Gtk.MessageType.QUESTION,
+                                   Gtk.ButtonsType.YES_NO, 'Rename document?')
+        dialog.format_secondary_text(
+            'The document located at \n{}\n will be renamed to \n{}.'.format(self.document.path, new_location))
+        response = dialog.run()
+        if response == Gtk.ResponseType.YES:
+            if os.path.exists(new_location):
+                pass
+            else:
+                os.rename(path, new_location)
+                self.document.path = new_location
+                self.path.set_text(new_location)
+        dialog.destroy()
+
+        self.session.commit()
+
+    def pdf_select(self, view):
+
+        pass #view.copy()
+
     def destroy(self):
 
         self.main_widget.destroy()
@@ -260,7 +380,7 @@ class AuthorView(GObject.GObject):
     template = 'ui/author_view.glade'
 
     __gsignals__ = {
-        'update_author': (GObject.SIGNAL_RUN_FIRST, None, (int, ))
+        'update_author': (GObject.SIGNAL_RUN_FIRST, None, (int, bool))
     }
 
     def __init__(self, session, author=None):
@@ -316,15 +436,19 @@ class AuthorView(GObject.GObject):
         self.author.first_name = self.first_name.get_text()
         self.author.middle_name = self.middle_name.get_text()
         self.author.last_name = self.last_name.get_text()
-        self.emit('update_author', self.author.id)
+        self.emit('update_author', self.author.id, False)
         self.session.commit()
 
 
-class CategoryView(object):
+class CategoryView(GObject.GObject):
 
     template = 'ui/category_view.glade'
 
+    __gsignals__ = {'update_category':  (GObject.SIGNAL_RUN_FIRST, None, (int, bool))}
+
     def __init__(self, session, category=None):
+
+        GObject.GObject.__init__(self)
 
         self.category = category
         self.session = session
@@ -379,5 +503,5 @@ class CategoryView(object):
 
         self.session.add(self.category)
         self.category.name = self.name.get_text()
-
         self.session.commit()
+        self.emit('update_category', self.category.id, self.category.parent_id, False)

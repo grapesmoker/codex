@@ -10,7 +10,7 @@ gi.require_version('EvinceDocument', '3.0')
 gi.require_version('EvinceView', '3.0')
 
 from gi.repository import EvinceDocument
-from gi.repository import GLib, Gio, Gtk
+from gi.repository import GLib, Gio, Gtk, Gdk
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -40,9 +40,13 @@ class LibraryApp(Gtk.Application):
         self.document_view = DocumentView(self.session)
         self.author_view = AuthorView(self.session)
         self.category_view = CategoryView(self.session)
+        self.clipboard = Gtk.Clipboard.get(Gdk.SELECTION_PRIMARY)
 
-        self.author_view.connect('update_author', self.update_author)
         self.document_view.connect('update_document', self.update_document)
+        self.document_view.connect('update_author', self.update_author)
+        self.document_view.connect('update_category', self.update_category)
+        self.author_view.connect('update_author', self.update_author)
+        self.category_view.connect('update_category', self.update_category)
         EvinceDocument.init()
 
     def do_startup(self):
@@ -64,6 +68,12 @@ class LibraryApp(Gtk.Application):
             open_library.connect('activate', self.open_library)
             file_import_folder = self.builder.get_object('file_import_folder')
             file_import_folder.connect('activate', self.import_folder)
+            file_save = self.builder.get_object('file_save')
+            file_save.connect('activate', self.save)
+            edit_copy = self.builder.get_object('edit_copy')
+            edit_copy.connect('activate', self.copy_text)
+            edit_paste = self.builder.get_object('edit_paste')
+            edit_paste.connect('activate', self.paste_text)
             status_bar = self.builder.get_object('statusbar')
             status_bar.push(1, 'No library currently loaded')
             
@@ -104,16 +114,6 @@ class LibraryApp(Gtk.Application):
 
         self.window.show_all()
 
-
-    # def on_button_press(self, widget, event):
-    #
-    #     if event.button == 3 and widget == self.docs_tree:
-    #         self.documents_context_menu(self.docs_tree.get_selection(), event)
-    #     elif event.button == 3 and widget == self.authors_tree:
-    #         self.authors_context_menu(self.authors_tree.get_selection(), event)
-    #     elif event.button == 3 and widget == self.category_tree:
-    #         self.category_context_menu(self.category_tree.get_selection(), event)
-
     def new_library(self, widget):
         
         #builder = Gtk.Builder.new_from_file('ui/input_box.glade')
@@ -123,7 +123,7 @@ class LibraryApp(Gtk.Application):
         dialog.set_default_size(200, 100)
         
         result = dialog.run()
-        library_name = dialog.entry.get_text().decode('utf8')
+        library_name = dialog.entry.get_text()
         dialog.destroy()
         if result == Gtk.ResponseType.OK:
             new_library = models.Library(name=library_name)
@@ -179,6 +179,10 @@ class LibraryApp(Gtk.Application):
         else:
             dialog.destroy()
 
+    def save(self, widget):
+
+        self.session.commit()
+
     def add_file(self, root, filename):
 
         full_path = os.path.join(root, filename)
@@ -208,15 +212,14 @@ class LibraryApp(Gtk.Application):
                                        middle_name=author_names[1],
                                        library=self.current_library)
         else:
-            new_author = models.Author(first_name='', last_name='', library=self.current_library)
+            new_author = None
         self.session.add(new_document)
-        self.session.add(new_author)
+        if new_author:
+            self.session.add(new_author)
         self.session.commit()
-        new_document.authors.append(new_author)
-        new_author.documents.append(new_document)
-        # self.session.add(self.current_library)
-        # self.current_library.documents.append(new_document)
-        # self.current_library.authors.append(new_author)
+        if new_author:
+            new_document.authors.append(new_author)
+            new_author.documents.append(new_document)
         self.session.commit()
 
         return new_document, new_author
@@ -254,7 +257,8 @@ class LibraryApp(Gtk.Application):
                 insert_category(parent_iter, child)
 
         for category in categories:
-            insert_category(None, category)
+            if category.parent_id is None:
+                insert_category(None, category)
     
     def show_doc(self, *args):
         
@@ -363,14 +367,17 @@ class LibraryApp(Gtk.Application):
                     self.right_frame.remove(child)
             dialog.destroy()
 
-    def update_document(self, event, document_id):
+    def update_document(self, event, document_id, insert_new):
 
-        #print('updating document with id', document_id)
-        for row in self.docs_store:
-            if row[0] == document_id:
-                document = self.session.query(models.Document).get(document_id)
-                self.docs_store.set_value(row.iter, 1, document.title)
-                self.docs_store.set_value(row.iter, 2, '; '.join([str(author) for author in document.authors]))
+        document = self.session.query(models.Document).get(document_id)
+        if insert_new:
+            self.docs_store.append([document.id, document.title, '; '.join([str(author) for author in document.authors])])
+        else:
+            for row in self.docs_store:
+                if row[0] == document_id:
+                    self.docs_store.set_value(row.iter, 1, document.title)
+                    self.docs_store.set_value(row.iter, 2, '; '.join([str(author) for author in document.authors]))
+                    break
 
     def authors_context_menu(self, selection, event):
 
@@ -428,12 +435,17 @@ class LibraryApp(Gtk.Application):
                     self.right_frame.remove(child)
             dialog.destroy()
 
-    def update_author(self, event, author_id):
+    def update_author(self, event, author_id, insert_new):
 
-        for row in self.authors_store:
-            if row[0] == author_id:
-                author = self.session.query(models.Author).get(author_id)
-                self.authors_store.set_value(row.iter, 1, str(author))
+        print('updating author {}, new = {}'.format(author_id, insert_new))
+        author = self.session.query(models.Author).get(author_id)
+        if insert_new:
+            self.authors_store.append([author.id, str(author)])
+        else:
+            for row in self.authors_store:
+                if row[0] == author_id:
+                    self.authors_store.set_value(row.iter, 1, str(author))
+                    break
 
     def category_context_menu(self, selection, event):
 
@@ -453,6 +465,63 @@ class LibraryApp(Gtk.Application):
 
         menu.show_all()
 
-    def on_quit(self):
+    def add_new_top_category(self, tree):
+
+        dialog = InputDialog(None, 'Enter category name')
+        result = dialog.run()
+        if result == Gtk.ResponseType.OK:
+            category_name = dialog.entry.get_text()
+            new_category = models.Category(name=category_name, library=self.current_library)
+            self.session.add(new_category)
+            self.session.commit()
+            self.category_store.insert(None, -1, [new_category.id, new_category.name])
+        dialog.destroy()
+
+    def add_new_subcategory(self, tree, selection):
+
+        dialog = InputDialog(None, 'Enter subcategory name')
+        result = dialog.run()
+        if result == Gtk.ResponseType.OK:
+            model, treeiter = selection.get_selected()
+            subcat_name = dialog.entry.get_text()
+            if treeiter:
+                parent_id = model[treeiter][0]
+                new_subcat = models.Category(name=subcat_name, parent_id=parent_id, library=self.current_library)
+                self.session.add(new_subcat)
+                self.session.commit()
+                self.category_store.insert(treeiter, -1, [new_subcat.id, new_subcat.name])
+
+        dialog.destroy()
+
+    def update_category(self, event, category_id, parent_id, insert_new):
+
+        print('updating category {}, parent {}, insert_new = {}'.format(category_id, parent_id, insert_new))
+        category = self.session.query(models.Category).get(category_id)
+        if parent_id > 0:
+            parent = self.session.query(models.Category).get(parent_id)
+            parent_iter = [row.iter for row in self.category_store if row[0] == parent.id][0]
+        else:
+            parent = None
+            parent_iter = None
+        if insert_new:
+            self.category_store.insert(parent_iter, -1, [category.id, category.name])
+        else:
+            for row in self.category_store:
+                if row[0] == category.id:
+                    self.category_store.set_value(row.iter, 1, category.name)
+                    break
+
+    def copy_text(self, widget):
+
+        self.document_view.pdf_view.copy()
+        text = self.clipboard.wait_for_text()
+        print(text)
+
+    def paste_text(self, widget):
+
+        text = self.clipboard.wait_for_text()
+        print(text)
+
+    def on_quit(self, widget):
         
         self.quit()
