@@ -9,7 +9,7 @@ gi.require_version('Gtk', '3.0')
 gi.require_version('EvinceDocument', '3.0')
 gi.require_version('EvinceView', '3.0')
 
-from gi.repository import EvinceDocument
+from gi.repository import EvinceDocument, EvinceView
 from gi.repository import GLib, Gio, Gtk, Gdk
 
 from sqlalchemy import create_engine
@@ -24,7 +24,8 @@ class LibraryApp(Gtk.Application):
     
     def __init__(self, *args, **kwargs):
         super(LibraryApp, self).__init__(*args, **kwargs)
-        self.builder = Gtk.Builder.new_from_file('ui/main3.glade')
+
+        self.builder = Gtk.Builder.new_from_file('ui/main.glade')
         self.window = None
         empty_lib = True
         if os.path.exists('./library.db') and os.stat('./library.db').st_size > 0:
@@ -513,13 +514,17 @@ class LibraryApp(Gtk.Application):
 
     def copy_text(self, widget):
 
-        self.document_view.pdf_view.copy()
-        text = self.clipboard.wait_for_text()
-        print(text)
+        focus = self.window.get_focus()
+        if isinstance(focus, EvinceView.View):
+            self.document_view.pdf_view.copy()
+        # can potentially copy other things in here like from trees and whatnot
 
     def paste_text(self, widget):
 
         text = self.clipboard.wait_for_text()
+        focus = self.window.get_focus()
+        if isinstance(focus, Gtk.Editable):
+            focus.paste_clipboard()
         print(text)
 
     def on_quit(self, widget):
