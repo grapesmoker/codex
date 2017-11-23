@@ -141,7 +141,6 @@ class LibraryApp(Gtk.Application):
         
         dialog = OpenLibraryDialog(self.session, parent=self.window)
         result = dialog.run()
-        print(result)
         if result == Gtk.ResponseType.OK:
             selection = dialog.get_selection()
             if selection:
@@ -455,7 +454,6 @@ class LibraryApp(Gtk.Application):
 
     def update_author(self, event, author_id, insert_new):
 
-        print('updating author {}, new = {}'.format(author_id, insert_new))
         author = self.session.query(models.Author).get(author_id)
         if insert_new:
             self.authors_store.append([author.id, str(author)])
@@ -513,7 +511,6 @@ class LibraryApp(Gtk.Application):
 
     def update_category(self, event, category_id, parent_id, insert_new):
 
-        print('updating category {}, parent {}, insert_new = {}'.format(category_id, parent_id, insert_new))
         category = self.session.query(models.Category).get(category_id)
         if parent_id > 0:
             parent = self.session.query(models.Category).get(parent_id)
@@ -571,7 +568,6 @@ class LibraryApp(Gtk.Application):
         focus = self.window.get_focus()
         if isinstance(focus, Gtk.Editable):
             focus.paste_clipboard()
-        print(text)
 
     def on_quit(self, widget):
         

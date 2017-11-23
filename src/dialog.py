@@ -86,8 +86,7 @@ class OpenLibraryDialog(object):
             doc_count = session.query(models.Document).filter(
                     models.Document.library_id == lib.id).count()
             self.library_store.append([lib.id, lib.name, doc_count])
-            print(lib.id, lib.name, doc_count)
-            
+
         renderer = Gtk.CellRendererText()
         column = Gtk.TreeViewColumn('Id', renderer, text=0)
         self.view.append_column(column)
@@ -179,7 +178,6 @@ class ExistingAuthorDialog(object):
 
         self.authors_store.clear()
         for author in self.authors:
-            print(str(author))
             self.authors_store.append([author.id, str(author)])
 
         renderer_text1 = Gtk.CellRendererText()
@@ -197,7 +195,6 @@ class ExistingAuthorDialog(object):
 
     def on_ok_clicked(self, *args):
 
-        print('ok clicked')
         tree_iter = self.authors_box.get_active_iter()
         if tree_iter:
             model = self.authors_box.get_model()
@@ -207,7 +204,6 @@ class ExistingAuthorDialog(object):
 
     def on_cancel_clicked(self, *args):
 
-        print('cancel clicked')
         self.dialog.response(Gtk.ResponseType.CANCEL)
 
     def destroy(self):
@@ -260,8 +256,6 @@ class ExistingCategoryDialog(object):
         model, treeiter = selection.get_selected()
         if treeiter:
             category_id = model[treeiter][0]
-            print([cat.id for cat in self.categories])
-            print(category_id)
             self.selected_category = [cat for cat in self.categories if cat.id == category_id][0]
         self.dialog.response(Gtk.ResponseType.OK)
 
@@ -329,7 +323,6 @@ class BulkRenameDialog(object):
     def on_ok_clicked(self, *args):
 
         self.selected_files = [row[0:4] for row in self.rename_store if row[4] is True]
-        print(self.selected_files)
         self.dialog.response(Gtk.ResponseType.OK)
 
     def on_cancel_clicked(self, *args):

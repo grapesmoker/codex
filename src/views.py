@@ -146,7 +146,6 @@ class DocumentView(GObject.GObject):
                 self.emit('update_author', author.id, True)
             else:
                 for row in self.authors_store:
-                    print(row[:])
                     if row[0] == author.id:
                         row[1] = str(author)
                         break
@@ -206,7 +205,6 @@ class DocumentView(GObject.GObject):
                     get_ancestor_chain(parent)
 
             get_ancestor_chain(category)
-            print([cat.name for cat in ancestors[::-1]])
             parent_iter = None
             for ancestor in ancestors[::-1]:
                 self.session.add(self.document)
