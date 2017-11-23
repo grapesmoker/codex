@@ -2,9 +2,11 @@
 
 import gi
 gi.require_version('Gtk', '3.0')
-from gi.repository import GLib, Gio, Gtk
+from gi.repository import GLib, Gio, Gtk, Pango
 
 import models
+import os
+import utils
 
 class InputDialog(Gtk.Dialog):
     
@@ -20,7 +22,38 @@ class InputDialog(Gtk.Dialog):
         box = self.get_content_area()
         box.add(self.entry)
         self.show_all()
-        
+
+class ProgressDialog(object):
+
+    template = 'ui/progress_bar_window.glade'
+
+    def __init__(self, parent):
+
+        self.builder = Gtk.Builder.new_from_file(self.template)
+        self.builder.connect_signals(self)
+        self.progress_bar = self.builder.get_object('progressbar')
+        self.progress_text = self.builder.get_object('progress_text')
+        self.window = self.builder.get_object('progressbar_window')
+        self.window.set_transient_for(parent)
+
+    def on_ok_clicked(self, dialog):
+        dialog.response(Gtk.ResponseType.OK)
+
+class ProgressWindow(Gtk.Dialog):
+
+    def __init__(self, parent):
+        Gtk.Dialog.__init__(self, 'Loading...', parent, 0,
+                            (Gtk.STOCK_OK, Gtk.ResponseType.OK))
+
+        grid = Gtk.Grid()
+        self.progress_bar = Gtk.ProgressBar()
+        self.progress_text = Gtk.Label()
+
+        grid.attach(self.progress_text, 0, 0, 1, 1)
+        grid.attach(self.progress_bar, 1, 0, 1, 1)
+        self.add(grid)
+
+
         
 class OpenLibraryDialog(object):
     
@@ -29,13 +62,11 @@ class OpenLibraryDialog(object):
     class Handler(object):
         
         def on_dialog_ok_clicked(self, dialog):
-            print('clicked ok', dialog)
             dialog.response(Gtk.ResponseType.OK)
+
         def on_dialog_cancel_clicked(self, dialog):
-            print('clicked cancel', dialog)
             dialog.response(Gtk.ResponseType.CANCEL)
-            #return Gtk.ResponseType.CANCEL
-    
+
     def __init__(self, session, parent=None):
         
         self.session = session
@@ -237,6 +268,88 @@ class ExistingCategoryDialog(object):
     def on_cancel_clicked(self, *args):
 
         self.dialog.response(Gtk.ResponseType.CANCEL)
+
+    def destroy(self):
+
+        self.dialog.destroy()
+
+
+class BulkRenameDialog(object):
+
+    template = 'ui/bulk_rename_dialog.glade'
+
+    def __init__(self, pattern, documents):
+
+        self.documents = documents
+        self.pattern = pattern
+        self.builder = Gtk.Builder.new_from_file(self.template)
+        self.builder.connect_signals(self)
+        self.dialog = self.builder.get_object('bulk_rename_dialog')
+        self.rename_tree = self.builder.get_object('rename_tree')
+        self.rename_store = self.builder.get_object('rename_store')
+        self.selected_files = []
+        self.load_data()
+
+    def load_data(self):
+
+        for doc in self.documents:
+            root, filename = os.path.split(os.path.abspath(doc.path))
+            new_root, new_filename = os.path.split(utils.rename(self.pattern, doc))
+            self.rename_store.append([doc.id, root, filename, new_filename, True])
+
+        renderer = Gtk.CellRendererText()
+        column = Gtk.TreeViewColumn('ID', renderer, text=0)
+        column.set_visible(False)
+        self.rename_tree.append_column(column)
+        renderer = Gtk.CellRendererText()
+        renderer.set_property('ellipsize', Pango.EllipsizeMode.END)
+        column = Gtk.TreeViewColumn('Directory', renderer, text=1)
+        self.rename_tree.append_column(column)
+        renderer = Gtk.CellRendererText()
+        column = Gtk.TreeViewColumn('Old filename', renderer, text=2)
+        self.rename_tree.append_column(column)
+        renderer = Gtk.CellRendererText()
+        renderer.set_property('editable', True)
+        renderer.connect('edited', self.on_cell_text_edited)
+        column = Gtk.TreeViewColumn('New filename', renderer, text=3)
+        self.rename_tree.append_column(column)
+        renderer = Gtk.CellRendererToggle()
+        renderer.connect('toggled', self.on_cell_toggled)
+        column = Gtk.TreeViewColumn('Selected', renderer, active=4)
+        self.rename_tree.append_column(column)
+
+    def on_cell_toggled(self, widget, path):
+
+        self.rename_store[path][4] = not self.rename_store[path][4]
+
+    def on_cell_text_edited(self, widget, position, edit):
+
+        self.rename_store[position][2] = edit
+
+    def on_ok_clicked(self, *args):
+
+        self.selected_files = [row[0:4] for row in self.rename_store if row[4] is True]
+        print(self.selected_files)
+        self.dialog.response(Gtk.ResponseType.OK)
+
+    def on_cancel_clicked(self, *args):
+
+        self.dialog.response(Gtk.ResponseType.CANCEL)
+
+    def on_select_all_clicked(self, *args):
+
+        for row in self.rename_store:
+            row[4] = True
+
+    def on_select_none_clicked(self, *args):
+
+        for row in self.rename_store:
+            row[4] = False
+
+    def run(self):
+
+        result = self.dialog.run()
+        return result
 
     def destroy(self):
 

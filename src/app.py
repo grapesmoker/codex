@@ -3,6 +3,7 @@
 import sys
 import os
 import models
+import glob
 
 import gi
 gi.require_version('Gtk', '3.0')
@@ -14,7 +15,7 @@ from gi.repository import GLib, Gio, Gtk, Gdk
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from dialog import InputDialog, OpenLibraryDialog, EditAuthorDialog
+from dialog import InputDialog, OpenLibraryDialog, EditAuthorDialog, ProgressDialog, ProgressWindow, BulkRenameDialog
 from views import DocumentView, AuthorView, CategoryView
 
 from pdfminer.pdfparser import PDFParser
@@ -75,9 +76,11 @@ class LibraryApp(Gtk.Application):
             edit_copy.connect('activate', self.copy_text)
             edit_paste = self.builder.get_object('edit_paste')
             edit_paste.connect('activate', self.paste_text)
+            tool_bulk_rename = self.builder.get_object('tools_rename')
+            tool_bulk_rename.connect('activate', self.bulk_rename)
             status_bar = self.builder.get_object('statusbar')
             status_bar.push(1, 'No library currently loaded')
-            
+
             self.docs_tree = self.builder.get_object('docs_tree')
             self.docs_store = self.builder.get_object('docs_store')
             self.authors_tree = self.builder.get_object('authors_tree')
@@ -151,18 +154,17 @@ class LibraryApp(Gtk.Application):
         self.load_authors()
         self.load_categories()
 
-    def import_folder(self, widget):
-        
-        print(widget)
+    def select_import_folder(self):
+
+        library_root = None
         if not self.current_library:
             dialog = Gtk.MessageDialog(self.window, 0, Gtk.MessageType.INFO,
                                        Gtk.ButtonsType.OK,
                                        'Need to have a library loaded before importing!')
             dialog.run()
             dialog.destroy()
-            return
-        
-        
+            return None
+
         dialog = Gtk.FileChooserDialog("Please choose a folder to import", self.window,
                                        Gtk.FileChooserAction.SELECT_FOLDER,
                                        (Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
@@ -170,36 +172,51 @@ class LibraryApp(Gtk.Application):
         result = dialog.run()
         if result == Gtk.ResponseType.OK:
             library_root = dialog.get_filename()
-            dialog.destroy()
-            for root, dirs, files in os.walk(library_root):
-                for f in files:
-                    if f.endswith('.pdf'):
-                        self.add_file(root, f)
+        dialog.destroy()
+        return library_root
 
+    def import_folder(self, widget):
+
+        library_root = self.select_import_folder()
+        if library_root:
+            pdf_files = glob.glob(library_root + '/**/*.pdf', recursive=True)
+            # this is slightly inelegant but it's not worth the bother of
+            # the complexity to break this out into a worker thread
+            while Gtk.events_pending():
+                Gtk.main_iteration()
+            import time
+            num_files = float(len(pdf_files))
+            progressbar = self.builder.get_object('progressbar')
+            statusbar = self.builder.get_object('statusbar')
+            for i, filename in enumerate(pdf_files):
+                statusbar.push(1, 'Loading {}'.format(filename))
+                progressbar.set_fraction((i + 1) / num_files)
+                # again we manually update the main loop to draw the events
+                while Gtk.events_pending():
+                    Gtk.main_iteration()
+                self.add_file(filename)
+                time.sleep(0.5)
+            statusbar.push(1, 'Current library: {}'.format(self.current_library.name))
             self.load_documents()
-        else:
-            dialog.destroy()
 
     def save(self, widget):
 
         self.session.commit()
 
-    def add_file(self, root, filename):
+    def add_file(self, filename):
 
-        full_path = os.path.join(root, filename)
-        print('Processing', full_path)
         try:
-            parser = PDFParser(open(full_path, 'rb'))
+            parser = PDFParser(open(filename, 'rb'))
             doc = PDFDocument(parser)
             meta = doc.info[0]
             author = str(meta.get('Author', ''))
             title = str(meta.get('Title'))
         except Exception as ex:
             author = None
-            title = f.replace('.pdf', '')
+            title = filename.replace('.pdf', '')
         # keywords = str(meta.get('/Keywords')).split(',')
 
-        new_document = models.Document(title=title, path=full_path, library=self.current_library)
+        new_document = models.Document(title=title, path=filename, library=self.current_library)
 
         if author is not None and author != '':
             author_names = author.split()
@@ -511,6 +528,35 @@ class LibraryApp(Gtk.Application):
                 if row[0] == category.id:
                     self.category_store.set_value(row.iter, 1, category.name)
                     break
+
+    def bulk_rename(self, *args):
+
+        input_dialog = InputDialog(self.window, 'Enter rename pattern:')
+        input_dialog.entry.set_text('{title} - {authors}.pdf')
+        result = input_dialog.run()
+        if result == Gtk.ResponseType.OK:
+            pattern = input_dialog.entry.get_text()
+            input_dialog.destroy()
+            # spin forward
+            while Gtk.events_pending():
+                Gtk.main_iteration()
+            documents = self.session.query(models.Document).filter(models.Document.library == self.current_library)
+            docs_by_id = {doc.id: doc for doc in documents}
+            dialog = BulkRenameDialog(pattern, documents)
+            result = dialog.run()
+            if result == Gtk.ResponseType.OK:
+                selected_files = dialog.selected_files
+                for doc_id, root, old_filename, new_filename in selected_files:
+                    old_path = os.path.join(root, old_filename)
+                    new_path = os.path.join(root, new_filename)
+                    os.rename(old_path, new_path)
+                    doc = docs_by_id[doc_id]
+                    doc.path = new_path
+                self.session.commit()
+            dialog.destroy()
+        else:
+            input_dialog.destroy()
+
 
     def copy_text(self, widget):
 

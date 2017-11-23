@@ -13,6 +13,7 @@ import wand
 from wand.image import Image
 
 import models as models
+import utils
 from dialog import EditAuthorDialog, ExistingAuthorDialog, InputDialog, ExistingCategoryDialog
 
 class DocumentView(GObject.GObject):
@@ -117,6 +118,44 @@ class DocumentView(GObject.GObject):
 
         dialog.destroy()
 
+    def edit_author(self, widget, selection=None):
+
+        author = None
+        new_author = True
+        if selection:
+            model, treeiter = selection.get_selected()
+            if treeiter:
+                author_id = model[treeiter][0]
+                author = self.session.query(models.Author).get(author_id)
+                new_author = False
+
+        dialog = EditAuthorDialog(author)
+
+        result = dialog.run()
+
+        if result == Gtk.ResponseType.OK:
+            author = dialog.author
+            self.session.add(author)
+            self.session.commit()
+            if new_author:
+                author.library = self.document.library
+                self.document.authors.append(author)
+                author.documents.append(self.document)
+                self.session.add(self.document)
+                self.authors_store.append([author.id, str(author)])
+                self.emit('update_author', author.id, True)
+            else:
+                for row in self.authors_store:
+                    print(row[:])
+                    if row[0] == author.id:
+                        row[1] = str(author)
+                        break
+                self.emit('update_author', author.id, False)
+            self.session.commit()
+
+        dialog.destroy()
+
+
     def add_existing_author(self, *args):
 
         if self.document:
@@ -150,7 +189,8 @@ class DocumentView(GObject.GObject):
     def add_existing_category(self, *args):
 
         if self.document:
-            categories = self.session.query(models.Category).filter(models.Category.library_id == self.document.library_id)
+            categories = self.session.query(models.Category).filter(models.Category.library_id == self.document.library_id).filter(
+                ~models.Category.id.in_([cat.id for cat in self.document.categories]))
         else:
             categories = []
         dialog = ExistingCategoryDialog(categories)
@@ -280,8 +320,11 @@ class DocumentView(GObject.GObject):
     def authors_context_menu(self, selection, event):
 
         menu = Gtk.Menu()
+        submenu = Gtk.MenuItem('Edit author')
+        submenu.connect('activate', self.edit_author, selection)
+        menu.append(submenu)
         submenu = Gtk.MenuItem('Add new author')
-        submenu.connect('activate', self.add_new_author)
+        submenu.connect('activate', self.edit_author, None)
         menu.append(submenu)
         submenu = Gtk.MenuItem('Add existing author')
         submenu.connect('activate', self.add_existing_author)
@@ -321,35 +364,7 @@ class DocumentView(GObject.GObject):
     def rename(self, widget):
 
         pattern = self.rename_pattern.get_text()
-        format_dict = {}
-        authors = self.document.authors
-        categories = self.document.categories
-
-        if '{last_name}' in pattern and len(authors) > 0:
-            format_dict['last_name'] = authors[0].last_name
-        if '{first_name}' in pattern and len(authors) > 0:
-            format_dict['first_name'] = authors[0].first_name
-        if '{author}' in pattern:
-            if len(authors) > 0:
-                format_dict['author'] = str(authors[0]).strip()
-            else:
-                format_dict['author'] = ''
-        if '{authors_last_names}' in pattern:
-            format_dict['authors_last_names'] = ', '.join([auth.last_name for auth in authors])
-        if '{authors}' in pattern:
-            format_dict['authors'] = '; '.join([str(auth).strip() for auth in authors])
-        if '{title}' in pattern:
-            format_dict['title'] = self.document.title
-        if '{categories}' in pattern:
-            format_dict['categories'] = ', '.join([str(cat).strip() for cat in categories])
-
-        path = self.document.path
-        new_file_name = pattern.format(**format_dict)
-        location = os.path.split(path)[0]
-        new_location = os.path.join(location, new_file_name)
-        if not new_location.endswith('.pdf') or new_location.endswith('.PDF'):
-            new_location += '.pdf'
-
+        new_location = utils.rename(pattern, self.document)
         dialog = Gtk.MessageDialog(None, 0, Gtk.MessageType.QUESTION,
                                    Gtk.ButtonsType.YES_NO, 'Rename document?')
         dialog.format_secondary_text(
@@ -359,7 +374,7 @@ class DocumentView(GObject.GObject):
             if os.path.exists(new_location):
                 pass
             else:
-                os.rename(path, new_location)
+                os.rename(self.document.path, new_location)
                 self.document.path = new_location
                 self.path.set_text(new_location)
         dialog.destroy()
