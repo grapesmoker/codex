@@ -9,8 +9,6 @@ from gi.repository import GLib, Gio, Gtk, GObject, Gdk
 from gi.repository import EvinceDocument, EvinceView
 
 import os
-import wand
-from wand.image import Image
 
 import models as models
 import utils
