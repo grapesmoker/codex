@@ -4,6 +4,7 @@ import sys
 import os
 import models
 import glob
+import threading
 
 import gi
 gi.require_version('Gtk', '3.0')
@@ -20,6 +21,7 @@ from views import DocumentView, AuthorView, CategoryView
 
 from pdfminer.pdfparser import PDFParser
 from pdfminer.pdfdocument import PDFDocument
+
 
 class LibraryApp(Gtk.Application):
     
@@ -147,11 +149,11 @@ class LibraryApp(Gtk.Application):
                 self.current_library = self.session.query(models.Library).get(int(selection))
                 status_bar = self.builder.get_object('statusbar')
                 status_bar.push(1, 'Current library: {}'.format(self.current_library.name))
-            
+                self.load_documents()
+                self.load_authors()
+                self.load_categories()
+
         dialog.destroy()
-        self.load_documents()
-        self.load_authors()
-        self.load_categories()
 
     def select_import_folder(self):
 
@@ -193,7 +195,7 @@ class LibraryApp(Gtk.Application):
                 # again we manually update the main loop to draw the events
                 while Gtk.events_pending():
                     Gtk.main_iteration()
-                self.add_file(filename)
+                self.add_file_bare(filename)
                 time.sleep(0.5)
             statusbar.push(1, 'Current library: {}'.format(self.current_library.name))
             self.load_documents()
@@ -205,6 +207,15 @@ class LibraryApp(Gtk.Application):
     def add_file(self, filename):
 
         try:
+            print(filename)
+            EvinceDocument.init()
+            pdf_doc = EvinceDocument.Document.factory_get_document('file://{}'.format(filename))
+            info = pdf_doc.get_info()
+            EvinceDocument.shutdown()
+            print(info)
+            #pdf_model = EvinceView.DocumentModel()
+            #pdf_model.set_document(pdf_doc)
+
             parser = PDFParser(open(filename, 'rb'))
             doc = PDFDocument(parser)
             meta = doc.info[0]
@@ -240,7 +251,14 @@ class LibraryApp(Gtk.Application):
         self.session.commit()
 
         return new_document, new_author
-            
+
+    def add_file_bare(self, filename):
+
+        title = os.path.split(filename)[1]
+        new_document = models.Document(title=title, path=filename, library=self.current_library)
+        self.session.add(new_document)
+        self.session.commit()
+
     def load_documents(self):
         
         docs = self.session.query(models.Document).filter(
@@ -553,7 +571,6 @@ class LibraryApp(Gtk.Application):
             dialog.destroy()
         else:
             input_dialog.destroy()
-
 
     def copy_text(self, widget):
 
