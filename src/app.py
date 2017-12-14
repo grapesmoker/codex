@@ -203,7 +203,7 @@ class LibraryApp(Gtk.Application):
                                        Gtk.FileChooserAction.OPEN,
                                        (Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
                                         Gtk.STOCK_OPEN, Gtk.ResponseType.OK))
-        pdf_filter = Gtk.Filter()
+        pdf_filter = Gtk.FileFilter()
         pdf_filter.set_name('PDF files')
         pdf_filter.add_mime_type('application/pdf')
         dialog.add_filter(pdf_filter)
