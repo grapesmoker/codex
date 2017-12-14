@@ -72,6 +72,8 @@ class LibraryApp(Gtk.Application):
             open_library.connect('activate', self.open_library)
             file_import_folder = self.builder.get_object('file_import_folder')
             file_import_folder.connect('activate', self.import_folder)
+            file_import_files = self.builder.get_object('file_import_files')
+            file_import_files.connect('activate', self.import_files)
             file_save = self.builder.get_object('file_save')
             file_save.connect('activate', self.save)
             edit_copy = self.builder.get_object('edit_copy')
@@ -186,16 +188,43 @@ class LibraryApp(Gtk.Application):
         dialog.destroy()
         return library_root
 
+    def select_import_files(self):
+
+        filenames = []
+        if not self.current_library:
+            dialog = Gtk.MessageDialog(self.window, 0, Gtk.MessageType.INFO,
+                                       Gtk.ButtonsType.OK,
+                                       'Need to have a library loaded before importing!')
+            dialog.run()
+            dialog.destroy()
+            return None
+
+        dialog = Gtk.FileChooserDialog("Please choose PDF files to import", self.window,
+                                       Gtk.FileChooserAction.OPEN,
+                                       (Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+                                        Gtk.STOCK_OPEN, Gtk.ResponseType.OK))
+        pdf_filter = Gtk.Filter()
+        pdf_filter.set_name('PDF files')
+        pdf_filter.add_mime_type('application/pdf')
+        dialog.add_filter(pdf_filter)
+        dialog.set_select_multiple(True)
+
+        result = dialog.run()
+        if result == Gtk.ResponseType.OK:
+            filenames = dialog.get_filenames()
+        dialog.destroy()
+        return filenames
+
     def import_folder(self, widget):
 
         library_root = self.select_import_folder()
         if library_root:
             pdf_files = glob.glob(library_root + '/**/*.pdf', recursive=True)
+
             # this is slightly inelegant but it's not worth the bother of
             # the complexity to break this out into a worker thread
             while Gtk.events_pending():
                 Gtk.main_iteration()
-            import time
             num_files = float(len(pdf_files))
             progressbar = self.builder.get_object('progressbar')
             statusbar = self.builder.get_object('statusbar')
@@ -206,7 +235,25 @@ class LibraryApp(Gtk.Application):
                 while Gtk.events_pending():
                     Gtk.main_iteration()
                 self.add_file_bare(filename)
-                time.sleep(0.5)
+            statusbar.push(1, 'Current library: {}'.format(self.current_library.name))
+            self.load_documents()
+
+    def import_files(self, widget):
+
+        pdf_files = self.select_import_files()
+        if pdf_files:
+            while Gtk.events_pending():
+                Gtk.main_iteration()
+            num_files = float(len(pdf_files))
+            progressbar = self.builder.get_object('progressbar')
+            statusbar = self.builder.get_object('statusbar')
+            for i, filename in enumerate(pdf_files):
+                statusbar.push(1, 'Loading {}'.format(filename))
+                progressbar.set_fraction((i + 1) / num_files)
+                # again we manually update the main loop to draw the events
+                while Gtk.events_pending():
+                    Gtk.main_iteration()
+                self.add_file_bare(filename)
             statusbar.push(1, 'Current library: {}'.format(self.current_library.name))
             self.load_documents()
 
