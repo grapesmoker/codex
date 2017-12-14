@@ -46,8 +46,8 @@ class Document(Base):
     path = Column(String(1000))
 
     authors = relationship('Author', secondary=author_documents, back_populates='documents')
-    categories = relationship('Category', secondary=document_categories, back_populates='documents')
-    #library = relationship('Library', secondary=library_documents, back_populates='documents')
+    categories = relationship('Category', secondary=document_categories, back_populates='documents',
+                              order_by='asc(Category.id)')
     library_id = Column(Integer, ForeignKey('libraries.id'))
     library = relationship('Library', back_populates='documents')
 

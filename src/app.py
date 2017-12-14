@@ -5,6 +5,7 @@ import os
 import models
 import glob
 import threading
+import shutil
 
 import gi
 gi.require_version('Gtk', '3.0')
@@ -82,6 +83,8 @@ class LibraryApp(Gtk.Application):
             edit_paste.connect('activate', self.paste_text)
             tool_bulk_rename = self.builder.get_object('tools_rename')
             tool_bulk_rename.connect('activate', self.bulk_rename)
+            tool_organize = self.builder.get_object('tools_organize')
+            tool_organize.connect('activate', self.organize_library)
             status_bar = self.builder.get_object('statusbar')
             status_bar.push(1, 'No library currently loaded')
 
@@ -646,6 +649,71 @@ class LibraryApp(Gtk.Application):
         focus = self.window.get_focus()
         if isinstance(focus, Gtk.Editable):
             focus.paste_clipboard()
+
+    def organize_library(self, widget):
+
+        destination_root = None
+        if not self.current_library:
+            dialog = Gtk.MessageDialog(self.window, 0, Gtk.MessageType.INFO,
+                                       Gtk.ButtonsType.OK,
+                                       'Need to have a library loaded before organizing!')
+            dialog.run()
+            dialog.destroy()
+            return None
+
+        dialog = Gtk.FileChooserDialog("Please choose the root folder in which the library should reside", self.window,
+                                       Gtk.FileChooserAction.SELECT_FOLDER,
+                                       (Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+                                        Gtk.STOCK_OPEN, Gtk.ResponseType.OK))
+        result = dialog.run()
+        if result == Gtk.ResponseType.OK:
+            destination_root = dialog.get_filename()
+            documents = self.current_library.documents
+            dialog.destroy()
+            while Gtk.events_pending():
+                Gtk.main_iteration()
+            for doc in documents:
+                self.organize_doc(doc, destination_root)
+        else:
+            dialog.destroy()
+
+    def organize_doc(self, document, root):
+
+        # determine category structure
+        cat_paths = []
+        visited = set()
+
+        def build_cat_chain(category, chain):
+            chain.append(category.name)
+            visited.add(category.name)
+            if category.parent_id is not None:
+                parent = self.session.query(models.Category).get(category.parent_id)
+                build_cat_chain(parent, chain)
+
+        for category in document.categories[::-1]:
+            chain = []
+            if category.name not in visited:
+                build_cat_chain(category, chain)
+                cat_paths.append(chain)
+
+        # put original file in deepest category and link to it from other places
+        # that it might be found
+        cat_paths = sorted(cat_paths, key=lambda chain: len(chain), reverse=True)
+
+        for i, path in enumerate(cat_paths):
+            if i == 0:
+                filename = os.path.basename(document.path)
+                dest = os.path.join(root, *path[::-1])
+                if not os.path.exists(dest):
+                    os.makedirs(dest)
+                dest = os.path.join(dest, filename)
+                shutil.copy(document.path, dest)
+            else:
+                link_dest = os.path.join(root, *path[::-1])
+                if not os.path.exists(link_dest):
+                    os.makedirs(link_dest)
+                link_dest = os.path.join(link_dest, filename)
+                os.symlink(dest, link_dest)
 
     def on_quit(self, widget):
         
