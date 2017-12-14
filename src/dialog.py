@@ -183,6 +183,7 @@ class ExistingAuthorDialog(object):
         renderer_text1 = Gtk.CellRendererText()
         self.authors_box.pack_start(renderer_text1, True)
         self.authors_box.add_attribute(renderer_text1, "text", 0)
+        renderer_text1.set_visible(False)
 
         renderer_text2 = Gtk.CellRendererText()
         self.authors_box.pack_start(renderer_text2, True)

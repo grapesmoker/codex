@@ -95,20 +95,30 @@ class LibraryApp(Gtk.Application):
             self.docs_tree.append_column(column)
             column.set_visible(False)
             column = Gtk.TreeViewColumn('Title', renderer, text=1)
+            column.set_resizable(True)
+            column.set_sort_column_id(1)
             self.docs_tree.append_column(column)
             column = Gtk.TreeViewColumn('Authors', renderer, text=2)
+            column.set_resizable(True)
+            column.set_sort_column_id(2)
+            self.docs_tree.append_column(column)
+            column = Gtk.TreeViewColumn('Categories', renderer, text=3)
+            column.set_resizable(True)
+            column.set_sort_column_id(3)
             self.docs_tree.append_column(column)
 
             column = Gtk.TreeViewColumn('ID', renderer, text=0)
             self.authors_tree.append_column(column)
             column.set_visible(False)
             column = Gtk.TreeViewColumn('Author', renderer, text=1)
+            column.set_sort_column_id(1)
             self.authors_tree.append_column(column)
 
             column = Gtk.TreeViewColumn('ID', renderer, text=0)
             self.category_tree.append_column(column)
             column.set_visible(False)
             column = Gtk.TreeViewColumn('Category', renderer, text=1)
+            column.set_sort_column_id(1)
             self.category_tree.append_column(column)
 
             self.docs_tree.connect('row-activated', self.show_doc)
@@ -266,8 +276,9 @@ class LibraryApp(Gtk.Application):
         self.docs_store.clear()
         
         for doc in docs:
-            authors = '; '.join([str(auth) for auth in doc.authors])
-            self.docs_store.append([doc.id, doc.title, authors])
+            authors = '; '.join([str(auth).strip() for auth in doc.authors])
+            categories = '; '.join([cat.name.strip() for cat in doc.categories])
+            self.docs_store.append([doc.id, doc.title.strip(), authors, categories])
         self.window.show_all()
 
     def load_authors(self):
@@ -406,12 +417,15 @@ class LibraryApp(Gtk.Application):
 
         document = self.session.query(models.Document).get(document_id)
         if insert_new:
-            self.docs_store.append([document.id, document.title, '; '.join([str(author) for author in document.authors])])
+            self.docs_store.append([document.id, document.title,
+                                    '; '.join([str(author).strip() for author in document.authors]),
+                                    '; '.join([cat.name.strip() for cat in document.categories])])
         else:
             for row in self.docs_store:
                 if row[0] == document_id:
-                    self.docs_store.set_value(row.iter, 1, document.title)
-                    self.docs_store.set_value(row.iter, 2, '; '.join([str(author) for author in document.authors]))
+                    self.docs_store.set_value(row.iter, 1, document.title.strip())
+                    self.docs_store.set_value(row.iter, 2, '; '.join([str(author).strip() for author in document.authors]))
+                    self.docs_store.set_value(row.iter, 3, '; '.join([cat.name.strip() for cat in document.categories]))
                     break
 
     def authors_context_menu(self, selection, event):

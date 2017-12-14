@@ -156,7 +156,8 @@ class DocumentView(GObject.GObject):
     def add_existing_author(self, *args):
 
         if self.document:
-            authors = self.session.query(models.Author).filter(models.Author.library == self.document.library).all()
+            authors = self.session.query(models.Author).filter(
+                models.Author.library == self.document.library).order_by(models.Author.last_name)
         else:
             authors = []
 
