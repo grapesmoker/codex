@@ -188,7 +188,7 @@ class DocumentView(GObject.GObject):
 
         if self.document:
             categories = self.session.query(models.Category).filter(models.Category.library_id == self.document.library_id).filter(
-                ~models.Category.id.in_([cat.id for cat in self.document.categories]))
+                ~models.Category.id.in_([cat.id for cat in self.document.categories])).order_by(models.Category.name)
         else:
             categories = []
         dialog = ExistingCategoryDialog(categories)
