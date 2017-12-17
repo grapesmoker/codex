@@ -65,6 +65,7 @@ class LibraryApp(Gtk.Application):
             self.add_window(self.window)
             self.right_frame = self.builder.get_object('right_frame')
             self.right_view = None
+            self.notebook = self.builder.get_object('notebook')
             quit = self.builder.get_object('file_quit')
             quit.connect('activate', self.on_quit)
             new_library = self.builder.get_object('file_new')
@@ -85,6 +86,10 @@ class LibraryApp(Gtk.Application):
             tool_bulk_rename.connect('activate', self.bulk_rename)
             tool_organize = self.builder.get_object('tools_organize')
             tool_organize.connect('activate', self.organize_library)
+            view_next = self.builder.get_object('next_item')
+            view_next.connect('activate', self.next_item)
+            view_prev = self.builder.get_object('prev_item')
+            view_prev.connect('activate', self.prev_item)
             status_bar = self.builder.get_object('statusbar')
             status_bar.push(1, 'No library currently loaded')
 
@@ -402,6 +407,54 @@ class LibraryApp(Gtk.Application):
             self.category_view.set_category(cat)
             self.right_frame.show_all()
 
+    def next_item(self, *args):
+
+        current_page = self.notebook.get_current_page()
+
+        tree_widget = None
+        fn = None
+        if current_page == 0:
+            tree_widget = self.docs_tree
+            fn = self.show_doc
+        elif current_page == 1:
+            tree_widget = self.authors_tree
+            fn = self.show_author
+        elif current_page == 2:
+            tree_widget = self.category_tree
+            fn = self.show_category
+
+        if tree_widget and fn:
+            selection = tree_widget.get_selection()
+            model, treeiter = selection.get_selected()
+            next_iter = model.iter_next(treeiter)
+            next_path = model.get_path(next_iter)
+            tree_widget.set_cursor(next_path)
+            fn()
+
+    def prev_item(self, *args):
+
+        current_page = self.notebook.get_current_page()
+
+        tree_widget = None
+        fn = None
+        if current_page == 0:
+            tree_widget = self.docs_tree
+            fn = self.show_doc
+        elif current_page == 1:
+            tree_widget = self.authors_tree
+            fn = self.show_author
+        elif current_page == 2:
+            tree_widget = self.category_tree
+            fn = self.show_category
+
+        if tree_widget and fn:
+            selection = tree_widget.get_selection()
+            model, treeiter = selection.get_selected()
+            prev_iter = model.iter_previous(treeiter)
+            prev_path = model.get_path(prev_iter)
+            tree_widget.set_cursor(prev_path)
+            fn()
+
     def documents_context_menu(self, widget, event):
 
         if event.button == 3:
@@ -672,6 +725,18 @@ class LibraryApp(Gtk.Application):
             dialog.destroy()
             while Gtk.events_pending():
                 Gtk.main_iteration()
+
+            dialog = Gtk.MessageDialog(self.window, 0, Gtk.MessageType.QUESTION,
+                                       Gtk.ButtonsType.YES_NO, 'Are you sure you want to reorganize your library?')
+            dialog.format_secondary_text(
+                'If you say "Yes," your library will be reorganized at \n{}\n and all the files will be migrated there.'.format(
+                    destination_root))
+            response = dialog.run()
+            if response != Gtk.ResponseType.YES:
+                dialog.destroy()
+                return
+            dialog.destroy()
+
             for doc in documents:
                 self.organize_doc(doc, destination_root)
         else:
@@ -700,20 +765,30 @@ class LibraryApp(Gtk.Application):
         # that it might be found
         cat_paths = sorted(cat_paths, key=lambda chain: len(chain), reverse=True)
 
-        for i, path in enumerate(cat_paths):
-            if i == 0:
-                filename = os.path.basename(document.path)
-                dest = os.path.join(root, *path[::-1])
-                if not os.path.exists(dest):
-                    os.makedirs(dest)
-                dest = os.path.join(dest, filename)
-                shutil.copy(document.path, dest)
-            else:
-                link_dest = os.path.join(root, *path[::-1])
-                if not os.path.exists(link_dest):
-                    os.makedirs(link_dest)
-                link_dest = os.path.join(link_dest, filename)
-                os.symlink(dest, link_dest)
+        if len(cat_paths) == 0:
+            filename = os.path.basename(document.path)
+            dest = os.path.join(root, filename)
+            if not os.path.exists(dest):
+                shutil.move(document.path, dest)
+                document.path = dest
+        else:
+            for i, path in enumerate(cat_paths):
+                if i == 0:
+                    filename = os.path.basename(document.path)
+                    dest = os.path.join(root, *path[::-1])
+                    if not os.path.exists(dest):
+                        os.makedirs(dest)
+                    dest = os.path.join(dest, filename)
+                    if not os.path.exists(dest):
+                        shutil.move(document.path, dest)
+                        document.path = dest
+                else:
+                    link_dest = os.path.join(root, *path[::-1])
+                    if not os.path.exists(link_dest):
+                        os.makedirs(link_dest)
+                    link_dest = os.path.join(link_dest, filename)
+                    os.symlink(dest, link_dest)
+        self.session.commit()
 
     def on_quit(self, widget):
         

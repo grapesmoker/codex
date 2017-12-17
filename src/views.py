@@ -284,6 +284,10 @@ class DocumentView(GObject.GObject):
         self.session.commit()
         self.emit('update_document', self.document.id, False)
 
+    def on_save_activate(self, *args):
+
+        self.on_save_clicked()
+
     def generate_preview(self, page):
 
         if self.pdf_doc is None:

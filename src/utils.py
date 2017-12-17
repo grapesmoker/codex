@@ -1,5 +1,9 @@
 import os
 
+from pdfminer.pdfparser import PDFParser
+from pdfminer.pdfdocument import PDFDocument
+
+
 def rename(pattern, document):
 
     format_dict = {}
@@ -31,3 +35,14 @@ def rename(pattern, document):
         new_location += '.pdf'
 
     return new_location
+
+
+def read_file_metadata(filename, stop_event):
+
+    parser = PDFParser(open(filename, 'rb'))
+    doc = PDFDocument(parser)
+    meta = doc.info[0]
+    author = str(meta.get('Author', ''))
+    title = str(meta.get('Title'))
+
+    return author, title
