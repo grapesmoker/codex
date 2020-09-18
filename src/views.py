@@ -14,6 +14,7 @@ import models as models
 import utils
 from dialog import EditAuthorDialog, ExistingAuthorDialog, InputDialog, ExistingCategoryDialog
 
+
 class DocumentView(GObject.GObject):
         
     template = 'ui/doc_view.glade'

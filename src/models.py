@@ -51,6 +51,7 @@ class Document(Base):
     library_id = Column(Integer, ForeignKey('libraries.id'))
     library = relationship('Library', back_populates='documents')
 
+
 class Author(Base):
 
     __tablename__ = 'authors'
@@ -67,6 +68,7 @@ class Author(Base):
     def __str__(self):
         # return '<Author id={}, first_name={}, last_name={}>'.format(self.id, self.first_name, self.last_name)
         return '{}, {} {}'.format(self.last_name or '', self.first_name or '', self.middle_name or '')
+
 
 class Category(Base):
 

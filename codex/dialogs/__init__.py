@@ -1,0 +1,5 @@
+from .InputDialog import InputDialog
+from .NewShelfDialog import NewShelfDialog
+from .EditAuthorDialog import EditAuthorDialog
+from .SelectExistingCategoryDialog import SelectExistingCategoryDialog
+from .SelectExistingAuthorDialog import SelectExistingAuthorDialog
