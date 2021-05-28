@@ -13,19 +13,18 @@ class SelectExistingCategoryDialog(Gtk.Dialog):
 
         self.category_store = Gtk.TreeStore()
         self.categories = categories
+        self.connect('response', self.on_response)
 
         content: Gtk.Box = self.get_content_area()
+        self.category_view = Gtk.TreeView(model=self.category_store)
 
-        if categories:
-            scrolled_window = Gtk.ScrolledWindow()
-            self.category_view = Gtk.TreeView(model=self.category_store)
-            scrolled_window.add(self.category_view)
-            content.add(scrolled_window)
-        else:
-            content.add(Gtk.Label(label='No categories defined!'))
+        scrolled_window = Gtk.ScrolledWindow()
+        scrolled_window.add(self.category_view)
+        content.add(scrolled_window)
+        self.load_data()
 
         self.selected_category = None
-        self.load_data()
+        self.show_all()
 
     def load_data(self):
 

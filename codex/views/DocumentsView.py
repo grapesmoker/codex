@@ -5,6 +5,7 @@ from codex.dialogs import (
     EditAuthorDialog, SelectExistingAuthorDialog, SelectExistingCategoryDialog
 )
 
+
 class DocumentsView(Gtk.Paned):
 
     __gsignals__ = {
@@ -300,10 +301,20 @@ class DocumentDetailView(Gtk.Grid):
     def add_existing_category(self, _action, _param):
 
         categories = self.session.query(models.Category).filter(
-            ~models.Category.id.in_([cat.id for cat in self.document.categories])).order_by(models.Category.name)
+            ~models.Category.id.in_([cat.id for cat in self.document.categories])
+        ).order_by(models.Category.name).all()
 
-        dialog = SelectExistingCategoryDialog(self.get_toplevel(), categories)
-        dialog.run()
+        if categories:
+            dialog = SelectExistingCategoryDialog(self.get_toplevel(), categories)
+            dialog.run()
+        else:
+            dialog = Gtk.MessageDialog(transient_for=self.get_toplevel(),
+                                       message_type=Gtk.MessageType.INFO,
+                                       buttons=Gtk.ButtonsType.OK,
+                                       text='No categories defined!')
+            dialog.format_secondary_text('Create some categories and try this option again.')
+            dialog.run()
+            dialog.destroy()
 
     def remove_category(self, *args):
 

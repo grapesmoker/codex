@@ -66,18 +66,21 @@ class EditCategoryDialog(Gtk.Dialog):
             ).all()
 
             for category in categories:
-                self.category_store.append()
+                self.category_store.append(category)
 
     def on_response(self, dialog, response):
 
         self.selected_response = response
 
         if response == Gtk.ResponseType.OK:
-            if not self.author:
-                self.author = Author()
+            if not self.category:
+                self.category = Category()
 
-            self.author.first_name = self.first_name_entry.get_text()
-            self.author.middle_name = self.middle_name_entry.get_text()
-            self.author.last_name = self.last_name_entry.get_text()
+            parent_sel = self.category_view.get_selection()
+            model, treeiter = parent_sel.get_selected()
+
+            self.category.name = self.category_name_entry.get_text()
+            if treeiter:
+                self.category.parent_id = model[treeiter][0]
 
         self.destroy()

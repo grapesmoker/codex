@@ -50,7 +50,6 @@ class SelectExistingAuthorDialog(Gtk.Dialog):
             if combo_iter:
                 session = get_session()
                 model = self.combo_box.get_model()
-                print(model is self.authors_store)
                 author_id = model[combo_iter][0]
                 self.selected_author = session.query(Author).get(author_id)
 
